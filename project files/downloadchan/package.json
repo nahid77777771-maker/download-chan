@@ -1,0 +1,19 @@
+{
+  "name": "downloadchan",
+  "version": "1.0.0",
+  "description": "Download-Chan — Android share-to-download app. Share any link (YouTube, TikTok, Instagram, Facebook, Douyin, Reels...) and save the media.",
+  "scripts": {
+    "build": "echo 'Static web app in www/ — no build step needed.'",
+    "cap:sync": "cap sync",
+    "apk:debug": "cd android && ./gradlew assembleDebug",
+    "apk:release": "cd android && ./gradlew assembleRelease"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.0",
+    "@capacitor/core": "^6.1.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.0"
+  },
+  "license": "MIT"
+}

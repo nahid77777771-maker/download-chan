@@ -1,0 +1,29 @@
+# Node
+node_modules/
+
+# Gradle / Android build output
+.gradle/
+build/
+android/.gradle/
+android/build/
+android/app/build/
+android/capacitor-cordova-android-plugins/build/
+android/local.properties
+*.iml
+.idea/
+
+# Capacitor generated files (recreated by `npx cap sync`)
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+android/capacitor.settings.gradle
+
+# Logs
+*.log
+
+# Large binary deliverables (kept out of git; rebuild with ./build-apk.sh)
+project files/apk/*.apk
+
+# OS junk
+.DS_Store
+Thumbs.db

@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0f1220" />
+  <title>Download-Chan</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">DC</span>
+      <h1>Download-Chan</h1>
+    </div>
+    <span id="engine-badge" class="badge">engine…</span>
+  </header>
+
+  <main id="views">
+
+    <!-- ============ DOWNLOAD ============ -->
+    <section id="tab-download" class="tab active">
+      <div class="card">
+        <label class="lbl" for="url">Link</label>
+        <textarea id="url" rows="3" autocomplete="off" autocapitalize="off" spellcheck="false"
+          placeholder="Paste a YouTube / TikTok / Instagram / Facebook / Douyin / Reels link…"></textarea>
+        <div class="row">
+          <button id="paste" class="btn ghost">Paste</button>
+          <button id="clear" class="btn ghost">Clear</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="seg" id="mode-seg">
+          <button class="seg-btn active" data-mode="video">Video</button>
+          <button class="seg-btn" data-mode="audio">Audio (MP3)</button>
+        </div>
+
+        <div id="quality-wrap">
+          <label class="lbl" for="quality">Quality</label>
+          <select id="quality">
+            <option value="best">Best available</option>
+            <option value="1080">1080p or lower</option>
+            <option value="720">720p or lower</option>
+            <option value="480">480p or lower</option>
+            <option value="360">360p or lower</option>
+          </select>
+        </div>
+      </div>
+
+      <button id="download" class="btn primary big">Download</button>
+      <p class="hint" id="dl-hint">Tip: share a link from any app — it lands here and starts automatically.</p>
+
+      <div id="active"></div>
+      <div id="queue"></div>
+    </section>
+
+    <!-- ============ LIBRARY ============ -->
+    <section id="tab-library" class="tab">
+      <div class="row between">
+        <h2>Downloads</h2>
+        <button id="refresh" class="btn ghost small">Refresh</button>
+      </div>
+      <div id="files" class="list"></div>
+    </section>
+
+    <!-- ============ BROWSE ============ -->
+    <section id="tab-browse" class="tab">
+      <p class="hint">Open a site to find a video, then tap <b>Share → Download-Chan</b>. Or paste a link below.</p>
+      <div id="sites" class="sites"></div>
+      <div class="card">
+        <label class="lbl" for="jump-url">Have a link?</label>
+        <input id="jump-url" type="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://…" />
+        <button id="jump" class="btn primary">Send to Download tab</button>
+      </div>
+    </section>
+
+    <!-- ============ SETTINGS ============ -->
+    <section id="tab-settings" class="tab">
+      <div class="card">
+        <label class="lbl">Default mode</label>
+        <div class="seg" id="def-mode-seg">
+          <button class="seg-btn active" data-defmode="video">Video</button>
+          <button class="seg-btn" data-defmode="audio">Audio</button>
+        </div>
+        <label class="lbl" style="margin-top:14px">Default quality</label>
+        <select id="def-quality">
+          <option value="best">Best available</option>
+          <option value="1080">1080p or lower</option>
+          <option value="720">720p or lower</option>
+          <option value="480">480p or lower</option>
+          <option value="360">360p or lower</option>
+        </select>
+      </div>
+
+      <div class="card">
+        <label class="lbl">Save folder</label>
+        <p id="folder" class="mono small">—</p>
+        <p class="hint">Files are stored in the app's private Downloads folder. Use Library → Share to send them anywhere.</p>
+      </div>
+
+      <div class="card">
+        <div class="row between"><span>Version</span><span id="appver" class="mono">1.0.0</span></div>
+        <div class="row between"><span>Engine</span><span id="engine-detail" class="mono">—</span></div>
+      </div>
+
+      <div class="card">
+        <button id="open-github" class="btn ghost">Source code on GitHub</button>
+        <p class="hint">Download only content you own or have permission to save. Respect each site's terms and local copyright law.</p>
+      </div>
+    </section>
+
+  </main>
+
+  <nav class="tabbar">
+    <button class="tabbtn active" data-tab="download">
+      <svg viewBox="0 0 24 24"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
+      <span>Download</span>
+    </button>
+    <button class="tabbtn" data-tab="library">
+      <svg viewBox="0 0 24 24"><path d="M4 5h16v4H4zM4 13h16v6H4z"/></svg>
+      <span>Library</span>
+    </button>
+    <button class="tabbtn" data-tab="browse">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.5 3 14 0 18M12 3c-3 3.5-3 14 0 18"/></svg>
+      <span>Browse</span>
+    </button>
+    <button class="tabbtn" data-tab="settings">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M5 5l2 2m10 10l2 2M19 5l-2 2M7 17l-2 2"/></svg>
+      <span>Settings</span>
+    </button>
+  </nav>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="js/native.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
