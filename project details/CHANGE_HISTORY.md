@@ -121,3 +121,82 @@ Every user prompt is recorded VERBATIM, followed by what was done.
 ### Notes
 - If a specific YouTube link still 403s, it's an IP-level bot flag; retries/VPN or
   cookies are the only remaining levers. Report the full "Last error" text.
+
+---
+
+## Session 4 — Online resolver fallback (v1.4)
+
+### Prompt (verbatim)
+> i have a idea use exsting websites who let past link and download videso and add
+> their api or what need to fix the issu whats your plan tell me first
+
+### Decisions (confirmed with user)
+- Approach: let a **server-side resolver** handle the anti-bot problem; the phone
+  downloads a direct file URL.
+- Backend: **free public API** (tested `gendownload.com` — works, no key).
+- Fallback mode: **Auto** — try bundled yt-dlp first, then the online resolver.
+
+### What was built
+- Verified `POST https://gendownload.com/api/extract {url}` returns
+  `{ title, thumbnail, formats:[{label,type,ext,url}] }` and the returned stream URL
+  serves a real `video/mp4`/`audio/mp3` (`Content-Disposition: attachment`). No API key.
+- `DownloaderPlugin.java`: new **`downloadRemote`** method — POSTs to the resolver,
+  picks the format by mode/quality, then downloads the direct URL with a plain
+  `HttpURLConnection` stream (Content-Length progress), saving into the same folder.
+  Resolver URL is configurable; defaults to gendownload.com.
+- `www/js/native.js`: exposes `downloadRemote`.
+- `www/js/app.js`: **Auto fallback** — `runJobLocal` → on failure → `runJobRemote`
+  (toast + card shows "Trying online…"); both messages shown if both fail.
+- Settings UI: **Online fallback** toggle + **Online resolver** URL field.
+
+### Deliverables
+- `project files/apk/Download-Chan-v1.4.apk` (108 MB) ← LATEST
+- Removed v1.3.
+
+### Notes / caveats
+- The shared link leaves the phone to the resolver (privacy) and the service may
+  rate-limit or vanish — that's why local yt-dlp stays as the first attempt.
+- Resolver is pluggable: pointing it at a self-hosted cobalt instance later is a
+  Settings change (cobalt's response schema differs, so it'd need an adapter).
+- Legal: personal use; respect each site's terms.
+
+---
+
+## Session 5 — Facebook "Cannot parse data" diagnosis + engine auto-update (v1.5)
+
+### Prompt (verbatim)
+> chack download folder issu.txt
+
+### The reported error (`~/Downloads/issu.txt`)
+```
+YoutubeDLException: WARNING: Your yt-dlp version (2025.11.12) is older than 90 days!
+ERROR: [facebook] 1413081230459468: Cannot parse data; please report this issue ...
+```
+
+### Root-cause findings (verified)
+- The failing link is **Facebook**, not YouTube. Facebook now **login-walls** most
+  `watch/?v=` videos, so:
+  - bundled yt-dlp `2025.11.12` → `Cannot parse data`;
+  - **latest** yt-dlp `2026.08.19` → **also `Cannot parse data`** (so not just stale);
+  - online resolver (gendownload) → **HTTP 422** "Could not fetch this link" after ~50s.
+- Conclusion: **this specific video needs an authenticated session** — not an app bug.
+  A version bump alone does NOT fix it; proper fix = **cookies/login support**.
+- But the bundled yt-dlp IS ~10 months stale (2025.11.12 vs 2026.08.19) → worth updating.
+
+### What was built
+- `DownloaderPlugin.java`: new **`updateEngine`** method — calls
+  `YoutubeDL.getInstance().updateYoutubeDL(ctx, YoutubeDL.UpdateChannel.STABLE.INSTANCE)`
+  (Kotlin sealed class → `.INSTANCE`), returns `{updated, status}`.
+- `www/js/native.js`: exposes `updateEngine`.
+- `www/js/app.js`: **auto-update on boot** (max once / 24h via `dc_engine_update` in
+  localStorage) + a **Settings → "Update download engine"** button; engine status shown
+  in Settings ("up to date" / "just updated").
+- Better error hint: if the error matches `cannot parse data|not available|login|sign
+  in|private`, append a hint pointing at Online fallback / public links.
+
+### Deliverables
+- `project files/apk/Download-Chan-v1.5.apk` ← LATEST (removed v1.3/v1.4).
+
+### Next (optional)
+- **Cookies support** (import a `cookies.txt` or in-app WebView login → `--cookies`) is
+  the real fix for login-walled Facebook/Instagram. Not yet implemented.

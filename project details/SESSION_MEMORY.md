@@ -1,8 +1,8 @@
 # Download-Chan — Session Memory (resume playbook)
 > Read this FIRST in any new session. Update at the END of every session.
 
-**Last dump:** Session 3 · v1.3
-**Next build will be:** v1.4
+**Last dump:** Session 5 · v1.5
+**Next build will be:** v1.6
 
 ---
 
@@ -87,12 +87,26 @@ source env.sh        # JDK 17 + ANDROID_HOME=~/Android/Sdk
 | v1.0 | Initial app (all 4 ABIs) — broken init | 214 MB |
 | v1.1 | + ABI filter — broken init | 109 MB |
 | v1.2 | Fix init (extractNativeLibs), green-hair icon + splash | 108 MB |
-| v1.3 | **YouTube 403 hardening + retry, mp4/m4a prefer, persistent error box, cuter chibi icon** ← LATEST | 108 MB |
+| v1.3 | YouTube 403 hardening + retry, mp4/m4a prefer, persistent error box, cuter chibi icon | 108 MB |
+| v1.4 | Online resolver fallback (Auto: local yt-dlp → gendownload.com), Settings toggle | 108 MB |
+| v1.5 | **yt-dlp engine auto-update (boot + Settings button), login-wall error hint** ← LATEST | 108 MB |
 
 Debug-signed (debug keystore). Install via `adb install -r <apk>`.
 (v1.0/v1.1/v1.2 removed — superseded.)
 
 ## 6. Gotchas
+- **Facebook login-wall (v1.5):** FB `watch/?v=` videos usually need an authenticated
+  session. Bundled yt-dlp (2025.11.12) AND latest (2026.08.19) both give
+  `[facebook] ...: Cannot parse data`; gendownload returns **422**. Real fix =
+  **cookies/login** (not implemented). Engine auto-update added anyway (bundle was ~10mo
+  stale): `updateEngine` → `YoutubeDL.UpdateChannel.STABLE.INSTANCE`.
+- **Online fallback (v1.4):** `DownloaderPlugin.downloadRemote()` POSTs `{url}` to
+  `settings.resolver + /api/extract` (default `https://gendownload.com`), which
+  returns `{title, formats:[{label,type,ext,url}]}`; the app downloads
+  `formats[i].url` directly. Generic/pluggable, but the JSON schema is
+  gendownload-specific — a **cobalt** backend needs a different adapter (cobalt
+  returns `status: tunnel|redirect|picker`, not `formats[]`). Test a resolver with:
+  `curl -sX POST <res>/api/extract -H 'Content-Type: application/json' -d '{"url":"<video>"}'`.
 - **"failed to initialize" = native libs not extracted.** youtubedl-android reads
   its `.so` from `nativeLibraryDir`; AGP 8 defaults `extractNativeLibs=false`.
   Keep BOTH `android:extractNativeLibs="true"` in the manifest AND
@@ -115,9 +129,12 @@ Debug-signed (debug keystore). Install via `adb install -r <apk>`.
   because it lives in the app module, not as an npm package.
 
 ## 7. Typical next moves
-- Confirm v1.3 downloads on the device; if a link still fails, read the on-screen
-  "Last error" box (copyable) and share the exact text.
-- Consider cookies support / an in-app WebView login to beat IP-level 403s.
+- Confirm v1.5 on the device: engine auto-updates on first launch (watch Settings →
+  Engine), and Online fallback catches YouTube 403s.
+- **Cookies support** is the highest-value next feature: import a `cookies.txt` (SAF) or
+  in-app WebView login → pass `--cookies` to yt-dlp. Fixes login-walled FB/IG.
+- If the free resolver is unreliable/rate-limited, swap `settings.resolver` to a
+  self-hosted **cobalt** instance (needs a small adapter for cobalt's schema).
 - Smaller release APK (keystore + `assembleRelease`, `minifyEnabled`), or arm64-only.
 - Download thumbnail/title preview (`getInfo` already implemented, UI not wired).
 - Multiple concurrent downloads / background service + notification.

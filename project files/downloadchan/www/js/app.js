@@ -2,7 +2,7 @@
 (function () {
   "use strict";
 
-  var APP_VERSION = "1.3.0";
+  var APP_VERSION = "1.5.0";
   var SITES = [
     { name: "YouTube", url: "https://m.youtube.com", color: "#ff0033" },
     { name: "TikTok", url: "https://www.tiktok.com", color: "#25f4ee" },
@@ -14,7 +14,7 @@
     { name: "Reddit", url: "https://www.reddit.com", color: "#ff4500" }
   ];
 
-  var settings = { mode: "video", quality: "best" };
+  var settings = { mode: "video", quality: "best", remote: true, resolver: "https://gendownload.com" };
   var activeJob = null;
   var pending = [];
   var downloadDir = "";
@@ -73,6 +73,8 @@
       var s = JSON.parse(localStorage.getItem("dc_settings") || "{}");
       if (s.mode) settings.mode = s.mode;
       if (s.quality) settings.quality = s.quality;
+      if (typeof s.remote === "boolean") settings.remote = s.remote;
+      if (s.resolver) settings.resolver = s.resolver;
     } catch (e) {}
     applyModeUI();
     applyDefaultUI();
@@ -87,6 +89,8 @@
   function applyDefaultUI() {
     $$("#def-mode-seg .seg-btn").forEach(function (b) { b.classList.toggle("active", b.dataset.defmode === settings.mode); });
     $("#def-quality").value = settings.quality;
+    $("#remote-on").checked = !!settings.remote;
+    $("#resolver").value = settings.resolver || "";
   }
 
   $$("#mode-seg .seg-btn").forEach(function (b) {
@@ -97,6 +101,14 @@
     b.addEventListener("click", function () { settings.mode = b.dataset.defmode; applyModeUI(); applyDefaultUI(); saveSettings(); });
   });
   $("#def-quality").addEventListener("change", function () { settings.quality = this.value; applyDefaultUI(); saveSettings(); });
+  $("#update-engine").addEventListener("click", function () { updateEngineNow(true); });
+  $("#remote-on").addEventListener("change", function () { settings.remote = this.checked; saveSettings(); });
+  $("#resolver").addEventListener("change", function () {
+    var v = this.value.trim();
+    settings.resolver = v || "https://gendownload.com";
+    this.value = settings.resolver;
+    saveSettings();
+  });
 
   /* ---------------- download tab ---------------- */
   $("#paste").addEventListener("click", function () {
@@ -152,29 +164,66 @@
     else runJob(job);
   }
 
+  function runJobLocal(job) {
+    window.DC.download({ url: job.url, id: job.id, mode: job.mode, quality: job.quality })
+      .then(function (res) { succeed(job, res); })
+      .catch(function (err) {
+        if (job.status === "cancelled") { finishActive(); return; }
+        var localMsg = (err && (err.message || err.errorMessage)) || "local engine failed";
+        if (settings.remote && window.DC.downloadRemote) {
+          job.stage = "Trying online…";
+          renderJobs();
+          toast("Local engine failed — trying online");
+          runJobRemote(job, localMsg);
+        } else {
+          fail(job, localMsg);
+        }
+      });
+  }
+
+  function runJobRemote(job, localMsg) {
+    window.DC.downloadRemote({
+      url: job.url, id: job.id, mode: job.mode, quality: job.quality, resolver: settings.resolver
+    })
+      .then(function (res) { succeed(job, res); })
+      .catch(function (err) {
+        if (job.status === "cancelled") { finishActive(); return; }
+        var remoteMsg = (err && (err.message || err.errorMessage)) || "online resolver failed";
+        fail(job, "Local: " + localMsg + "\nOnline: " + remoteMsg);
+      });
+  }
+
+  function succeed(job, res) {
+    job.status = "done";
+    job.progress = 100;
+    job.stage = null;
+    if (res && res.path) { job.path = res.path; job.name = res.name; }
+    finishActive();
+    toast("Saved: " + (job.name || "file"));
+    refreshLibrary();
+  }
+
+  function fail(job, msg) {
+    job.status = "error";
+    job.stage = null;
+    var hint = "";
+    if (/cannot parse data|not available|login|sign in|requires authentication|private/i.test(msg)) {
+      hint = "\n\nHint: this video likely needs a login (e.g. private Facebook/Instagram videos). " +
+             "Tick 'Online fallback' in Settings, or try a public link.";
+    }
+    job.error = msg + hint;
+    finishActive();
+    toast("Download failed — see details");
+    showError(job.error);
+  }
+
   function runJob(job) {
     activeJob = job;
     job.status = "downloading";
     job.progress = -1;
+    job.stage = null;
     renderJobs();
-
-    window.DC.download({ url: job.url, id: job.id, mode: job.mode, quality: job.quality })
-      .then(function (res) {
-        job.status = "done";
-        job.progress = 100;
-        if (res && res.path) { job.path = res.path; job.name = res.name; }
-        finishActive();
-        toast("Saved: " + (job.name || "file"));
-        refreshLibrary();
-      })
-      .catch(function (err) {
-        if (job.status === "cancelled") { finishActive(); return; }
-        job.status = "error";
-        job.error = (err && (err.message || err.errorMessage)) || "Download failed";
-        finishActive();
-        toast("Download failed — see details");
-        showError(job.error);
-      });
+    runJobLocal(job);
   }
 
   function finishActive() {
@@ -205,6 +254,7 @@
     if (job.status === "queued") status = "Queued";
     else if (job.status === "done") status = "Completed";
     else if (job.status === "error") status = job.error;
+    else if (job.stage) status = job.stage;
     else status = pct > 0 ? pct.toFixed(0) + "%" : "Starting…";
 
     el.innerHTML =
@@ -345,10 +395,39 @@
     window.DC.init().then(function () {
       setBadge("ready", "ok");
       $("#engine-detail").textContent = "yt-dlp (bundled)";
+      maybeUpdateEngine();
     }).catch(function (e) {
       setBadge("error", "bad");
       $("#engine-detail").textContent = (e && e.message) || "error";
     });
+  }
+
+  function engineResultText(r) {
+    if (!r) return "yt-dlp (bundled)";
+    if (r.updated) return "yt-dlp (just updated)";
+    if (r.status === "ALREADY_UP_TO_DATE") return "yt-dlp (up to date)";
+    if (r.status === "error") return "yt-dlp (bundled)";
+    return "yt-dlp (" + (r.status || "bundled") + ")";
+  }
+
+  function updateEngineNow(manual) {
+    if (!window.DC.available || !window.DC.updateEngine) return;
+    var el = $("#engine-detail");
+    if (el && manual) el.textContent = "updating engine…";
+    window.DC.updateEngine().then(function (r) {
+      try { localStorage.setItem("dc_engine_update", String(Date.now())); } catch (e) {}
+      if (el) el.textContent = engineResultText(r);
+      if (manual) toast(r && r.updated ? "Engine updated" : "Engine is up to date");
+    }).catch(function (e) {
+      if (el) el.textContent = "yt-dlp (bundled)";
+      if (manual) toast("Update failed: " + ((e && e.message) || "error"));
+    });
+  }
+
+  function maybeUpdateEngine() {
+    var last = 0;
+    try { last = parseInt(localStorage.getItem("dc_engine_update") || "0", 10) || 0; } catch (e) {}
+    if (Date.now() - last > 24 * 60 * 60 * 1000) updateEngineNow(false);
   }
 
   /* ---------------- events + bootstrap ---------------- */

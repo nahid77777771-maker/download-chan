@@ -21,7 +21,18 @@ import com.yausername.youtubedl_android.YoutubeDLRequest;
 import com.yausername.youtubedl_android.YoutubeDLResponse;
 import com.yausername.youtubedl_android.mapper.VideoInfo;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -136,6 +147,25 @@ public class DownloaderPlugin extends Plugin {
             ensureInit();
             JSObject r = new JSObject();
             r.put("ready", true);
+            call.resolve(r);
+        });
+    }
+
+    @PluginMethod
+    public void updateEngine(final PluginCall call) {
+        runAsync(call, () -> {
+            ensureInit();
+            JSObject r = new JSObject();
+            try {
+                YoutubeDL.UpdateStatus status = YoutubeDL.getInstance()
+                        .updateYoutubeDL(getContext(), YoutubeDL.UpdateChannel.STABLE.INSTANCE);
+                r.put("updated", status == YoutubeDL.UpdateStatus.DONE);
+                r.put("status", String.valueOf(status));
+            } catch (Throwable t) {
+                r.put("updated", false);
+                r.put("status", "error");
+                r.put("message", fullMessage(t));
+            }
             call.resolve(r);
         });
     }
@@ -424,6 +454,181 @@ public class DownloaderPlugin extends Plugin {
         } catch (Exception e) {
             call.reject(e.getMessage());
         }
+    }
+
+    /* ---- remote resolver (online fallback) ----------------------------- */
+
+    private static final String DEFAULT_RESOLVER = "https://gendownload.com";
+    private static final String UA =
+            "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Mobile Safari/537.36";
+
+    private static int labelHeight(String label) {
+        if (label == null) return -1;
+        String digits = label.replaceAll("[^0-9]", "");
+        if (digits.isEmpty()) return -1;
+        try { return Integer.parseInt(digits); } catch (Exception e) { return -1; }
+    }
+
+    private static String sanitize(String s) {
+        if (s == null || s.trim().isEmpty()) s = "download";
+        s = s.replaceAll("[\\\\/:*?\"<>|]", "_").replaceAll("\\s+", " ").trim();
+        if (s.length() > 80) s = s.substring(0, 80).trim();
+        return s.isEmpty() ? "download" : s;
+    }
+
+    private static String readAll(InputStream in) throws IOException {
+        if (in == null) return "";
+        StringBuilder sb = new StringBuilder();
+        try (BufferedReader r = new BufferedReader(new InputStreamReader(in, "UTF-8"))) {
+            String line;
+            while ((line = r.readLine()) != null) sb.append(line);
+        }
+        return sb.toString();
+    }
+
+    private JSONObject resolveRemote(String resolver, String url) throws Exception {
+        URL endpoint = new URL(resolver.replaceAll("/+$", "") + "/api/extract");
+        HttpURLConnection conn = (HttpURLConnection) endpoint.openConnection();
+        conn.setRequestMethod("POST");
+        conn.setDoOutput(true);
+        conn.setConnectTimeout(30000);
+        conn.setReadTimeout(45000);
+        conn.setRequestProperty("Content-Type", "application/json");
+        conn.setRequestProperty("Accept", "application/json");
+        conn.setRequestProperty("User-Agent", UA);
+        byte[] body = ("{\"url\":" + JSONObject.quote(url) + "}").getBytes("UTF-8");
+        try (OutputStream os = conn.getOutputStream()) { os.write(body); }
+        int code = conn.getResponseCode();
+        String resp = readAll(code >= 400 ? conn.getErrorStream() : conn.getInputStream());
+        conn.disconnect();
+        if (code < 200 || code >= 300) {
+            throw new IOException("resolver HTTP " + code + ": "
+                    + (resp.length() > 200 ? resp.substring(0, 200) : resp));
+        }
+        return new JSONObject(resp);
+    }
+
+    /** Pick the best matching format from the resolver's JSON. */
+    private static JSONObject pickRemote(JSONObject info, String mode, String quality) throws Exception {
+        JSONArray formats = info.optJSONArray("formats");
+        if (formats == null || formats.length() == 0) {
+            throw new Exception("resolver returned no formats");
+        }
+        JSONObject audioFallback = null;
+        JSONObject videoBest = null;
+        int videoBestH = -1;
+        int videoAnyBestH = -1;
+        JSONObject videoAnyBest = null;
+        int wantH = labelHeight(quality);
+
+        for (int i = 0; i < formats.length(); i++) {
+            JSONObject f = formats.getJSONObject(i);
+            String type = f.optString("type", "");
+            if ("audio".equals(type)) {
+                if (audioFallback == null || "mp3".equalsIgnoreCase(f.optString("ext"))) audioFallback = f;
+                continue;
+            }
+            if (!"video".equals(type)) continue;
+            int h = labelHeight(f.optString("label", ""));
+            if (h > videoAnyBestH) { videoAnyBestH = h; videoAnyBest = f; }
+            if (wantH <= 0 || h <= wantH) {
+                if (h > videoBestH) { videoBestH = h; videoBest = f; }
+            }
+        }
+
+        if ("audio".equals(mode)) {
+            if (audioFallback == null) throw new Exception("no audio format available");
+            return audioFallback;
+        }
+        if (videoBest != null) return videoBest;
+        if (videoAnyBest != null) return videoAnyBest;
+        throw new Exception("no video format available");
+    }
+
+    private void emitProgress(final String id, final double pct, final long eta) {
+        JSObject d = new JSObject();
+        d.put("id", id);
+        d.put("progress", pct);
+        d.put("eta", eta);
+        d.put("line", "");
+        emit("progress", d);
+    }
+
+    private void downloadHttp(String mediaUrl, File out, String id) throws Exception {
+        File part = new File(out.getAbsolutePath() + ".part");
+        HttpURLConnection conn = (HttpURLConnection) new URL(mediaUrl).openConnection();
+        conn.setInstanceFollowRedirects(true);
+        conn.setConnectTimeout(30000);
+        conn.setReadTimeout(60000);
+        conn.setRequestProperty("User-Agent", UA);
+        conn.setRequestProperty("Accept", "*/*");
+        conn.connect();
+        int code = conn.getResponseCode();
+        if (code < 200 || code >= 300) {
+            conn.disconnect();
+            throw new IOException("HTTP " + code + " downloading media");
+        }
+        long total = conn.getContentLengthLong();
+        byte[] buf = new byte[65536];
+        long got = 0, last = 0;
+        try (InputStream in = conn.getInputStream();
+             OutputStream fos = new FileOutputStream(part)) {
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                fos.write(buf, 0, n);
+                got += n;
+                long now = System.currentTimeMillis();
+                if (now - last >= 250) {
+                    last = now;
+                    emitProgress(id, total > 0 ? (got * 100.0 / total) : -1, 0);
+                }
+            }
+        } finally {
+            conn.disconnect();
+        }
+        if (!part.renameTo(out)) {
+            try (InputStream in = new java.io.FileInputStream(part);
+                 OutputStream fos = new FileOutputStream(out)) {
+                byte[] b = new byte[65536];
+                int n;
+                while ((n = in.read(b)) > 0) fos.write(b, 0, n);
+            }
+            part.delete();
+        }
+    }
+
+    @PluginMethod
+    public void downloadRemote(final PluginCall call) {
+        final String url = call.getString("url");
+        if (url == null || url.trim().isEmpty()) {
+            call.reject("url required");
+            return;
+        }
+        final String id = call.getString("id", String.valueOf(System.currentTimeMillis()));
+        final String mode = call.getString("mode", "video");
+        final String quality = call.getString("quality", "best");
+        final String resolver = call.getString("resolver", DEFAULT_RESOLVER);
+        final File dir = downloadDir();
+
+        runAsync(call, () -> {
+            JSONObject info = resolveRemote(resolver, url);
+            JSONObject chosen = pickRemote(info, mode, quality);
+            String mediaUrl = chosen.getString("url");
+            String ext = chosen.optString("ext", "audio".equals(mode) ? "mp3" : "mp4");
+            String title = sanitize(info.optString("title", "download"));
+            File out = new File(dir, title + " [" + id + "]." + ext);
+
+            downloadHttp(mediaUrl, out, id);
+
+            JSObject d = new JSObject();
+            d.put("id", id);
+            d.put("success", true);
+            d.put("path", out.getAbsolutePath());
+            d.put("name", out.getName());
+            d.put("size", out.length());
+            emit("completed", d);
+            call.resolve(d);
+        });
     }
 
     /* ---- event emission ------------------------------------------------ */

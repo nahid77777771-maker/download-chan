@@ -7,8 +7,8 @@ android {
         applicationId "com.downloadchan.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 10300
-        versionName "1.3"
+        versionCode 10500
+        versionName "1.5"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         // Bundle only real phone ABIs (drops the huge x86/x86_64 emulator libs)
         ndk {

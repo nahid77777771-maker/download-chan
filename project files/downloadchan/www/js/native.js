@@ -22,6 +22,8 @@
     },
     getInfo: function (o) { return D ? D.getInfo(o) : missing(); },
     download: function (o) { return D ? D.download(o) : missing(); },
+    downloadRemote: function (o) { return D ? D.downloadRemote(o) : missing(); },
+    updateEngine: function () { return D ? D.updateEngine() : missing(); },
     cancel: function (o) { return D ? D.cancel(o) : missing(); },
     listFiles: function () { return D ? D.listFiles() : Promise.resolve({ files: [], dir: "" }); },
     deleteFile: function (o) { return D ? D.deleteFile(o) : missing(); },

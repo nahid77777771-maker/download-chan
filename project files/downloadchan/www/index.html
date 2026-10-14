@@ -107,6 +107,17 @@
       </div>
 
       <div class="card">
+        <label class="lbl">Online fallback</label>
+        <label class="row" style="align-items:center;gap:10px;cursor:pointer">
+          <input type="checkbox" id="remote-on" style="width:auto" />
+          <span>If the built-in engine fails, download via an online service</span>
+        </label>
+        <label class="lbl" style="margin-top:14px">Online resolver</label>
+        <input id="resolver" type="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://gendownload.com" />
+        <p class="hint">The link is sent to this service to resolve a direct download. Use only with trusted services.</p>
+      </div>
+
+      <div class="card">
         <label class="lbl">Save folder</label>
         <p id="folder" class="mono small">—</p>
         <p class="hint">Files are stored in the app's private Downloads folder. Use Library → Share to send them anywhere.</p>
@@ -115,6 +126,8 @@
       <div class="card">
         <div class="row between"><span>Version</span><span id="appver" class="mono">1.0.0</span></div>
         <div class="row between"><span>Engine</span><span id="engine-detail" class="mono">—</span></div>
+        <button id="update-engine" class="btn ghost" style="margin-top:12px">Update download engine</button>
+        <p class="hint">Fetches the latest yt-dlp (fixes many extraction errors). Needs internet.</p>
       </div>
 
       <div class="card">
