@@ -43,3 +43,38 @@ Every user prompt is recorded VERBATIM, followed by what was done.
 ### Notes
 - v1.0 shipped before ABI filtering; v1.1 is the recommended build.
 - Engine = yt-dlp 0.18.1 (bundled). ffmpeg bundled for merging / MP3 extraction.
+
+---
+
+## Session 2 — Downloads failed to initialize + new icon (v1.2)
+
+### Prompt (verbatim)
+> i try to download videos and it says faild to inisilized rechack and fix code and
+> change app icon to cuter japanise green hair girl and holding a download sing
+
+### Diagnosis
+- Symptom: "failed to initialize". Root cause: under **AGP 8** the manifest defaults
+  to `android:extractNativeLibs="false"`, so youtubedl-android's bundled
+  Python/FFmpeg `.so` files are never extracted to `nativeLibraryDir` → init throws
+  (`YoutubeDLException: failed to initialize`, caused by `NoSuchFileException ...
+  libpython.zip.so`). Well-known youtubedl-android issue (#105/#300).
+
+### Fixes
+- `AndroidManifest.xml`: added `android:extractNativeLibs="true"` on `<application>`.
+- `android/app/build.gradle`: added `packagingOptions { jniLibs { useLegacyPackaging
+  = true } }` at the `android {}` level (forces install-time extraction).
+- `DownloaderPlugin.java`: errors now surface the **full cause chain**
+  (`fullMessage()`), logged with `Log.e` — easier to diagnose next time.
+- **New app icon:** cute green-haired chibi girl holding a download sign, authored
+  as SVG (`rsvg-convert`) → all mipmap densities (legacy square + round + adaptive
+  foreground). Adaptive background = pink→blue gradient VectorDrawable.
+- **Splash screens** regenerated: gradient background + centered logo (were blank
+  white with a leftover default logo).
+
+### Deliverables
+- `project files/apk/Download-Chan-v1.2.apk` (108 MB) ← LATEST (working)
+- Removed the broken v1.0/v1.1 APKs.
+
+### Notes
+- Verified in the built APK: `extractNativeLibs=0xffffffff` (true), libs legacy
+  packaged, all icon densities present.

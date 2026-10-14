@@ -1,8 +1,8 @@
 # Download-Chan — Session Memory (resume playbook)
 > Read this FIRST in any new session. Update at the END of every session.
 
-**Last dump:** Session 1 · v1.1
-**Next build will be:** v1.2
+**Last dump:** Session 2 · v1.2
+**Next build will be:** v1.3
 
 ---
 
@@ -67,19 +67,34 @@ source env.sh        # JDK 17 + ANDROID_HOME=~/Android/Sdk
   - Formats: video `bv*+ba/b` (+ `--merge-output-format mp4`), audio
     `bestaudio/best -x --audio-format mp3`.
   - Returns the newest file in the dir as the result.
-- Manifest: `INTERNET`, `ACCESS_NETWORK_STATE`; `largeHeap=true`; share intent-filter;
-  FileProvider `${applicationId}.fileprovider` (paths in `res/xml/file_paths.xml`).
+- Manifest: `INTERNET`, `ACCESS_NETWORK_STATE`; `largeHeap=true`;
+  **`extractNativeLibs="true"`** (REQUIRED by youtubedl-android — see gotchas);
+  share intent-filter; FileProvider `${applicationId}.fileprovider`.
+- `build.gradle`: `ndk { abiFilters 'arm64-v8a','armeabi-v7a' }` and
+  `packagingOptions { jniLibs { useLegacyPackaging = true } }` (both required).
 - `res/values/colors.xml` added (was missing in the KanaPet template).
+- **Icons:** authored as SVG then rasterized with `rsvg-convert` + ImageMagick into
+  every mipmap density (square + round + adaptive foreground). Adaptive background
+  is a gradient VectorDrawable. Source art is versioned at
+  `project details/icon/{art.svg,bg.svg,gen.sh}` — regenerate with
+  `cd "project details/icon" && bash gen.sh`.
+- **Splashes:** gradient + centered logo (all `drawable*/splash.png`).
 
 ## 5. Deliverables
 | Version | What | Size |
 |---|---|---|
-| v1.0 | Initial app (all 4 ABIs) | 214 MB |
-| v1.1 | + ABI filter (arm64/armv7) ← LATEST | 109 MB |
+| v1.0 | Initial app (all 4 ABIs) — broken init | 214 MB |
+| v1.1 | + ABI filter — broken init | 109 MB |
+| v1.2 | **Fix downloads (extractNativeLibs), new green-hair icon + splash** ← LATEST | 108 MB |
 
 Debug-signed (debug keystore). Install via `adb install -r <apk>`.
+(v1.0/v1.1 removed — they failed to initialize.)
 
 ## 6. Gotchas
+- **"failed to initialize" = native libs not extracted.** youtubedl-android reads
+  its `.so` from `nativeLibraryDir`; AGP 8 defaults `extractNativeLibs=false`.
+  Keep BOTH `android:extractNativeLibs="true"` in the manifest AND
+  `packagingOptions { jniLibs { useLegacyPackaging = true } }` in build.gradle.
 - `git clone github.com` / `git ls-remote` HANG on this machine (use raw /
   codeload). `git push` may be slow — allow a long timeout.
 - GitHub token in keyring was **invalid** (needs `gh auth login` before push).
@@ -89,7 +104,7 @@ Debug-signed (debug keystore). Install via `adb install -r <apk>`.
   because it lives in the app module, not as an npm package.
 
 ## 7. Typical next moves
-- Create the GitHub repo + `gh auth login`, then `git push -u origin main`.
+- Confirm v1.2 downloads work on the device (the extractNativeLibs fix).
 - Smaller release APK (keystore + `assembleRelease`, `minifyEnabled`), or arm64-only.
 - Download thumbnail/title preview (`getInfo` already implemented, UI not wired).
 - Multiple concurrent downloads / background service + notification.

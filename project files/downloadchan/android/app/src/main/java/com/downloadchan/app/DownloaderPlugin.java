@@ -3,6 +3,7 @@ package com.downloadchan.app;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Environment;
+import android.util.Log;
 import android.webkit.MimeTypeMap;
 
 import androidx.core.content.FileProvider;
@@ -72,10 +73,23 @@ public class DownloaderPlugin extends Plugin {
             try {
                 task.run();
             } catch (Throwable t) {
-                String msg = t.getMessage() == null ? t.toString() : t.getMessage();
-                call.reject(msg);
+                Log.e("DownloaderPlugin", "task failed", t);
+                call.reject(fullMessage(t));
             }
         }).start();
+    }
+
+    static String fullMessage(Throwable t) {
+        StringBuilder sb = new StringBuilder();
+        Throwable c = t;
+        int depth = 0;
+        while (c != null && depth < 6) {
+            if (sb.length() > 0) sb.append("  <-  ");
+            sb.append(c.getClass().getSimpleName()).append(": ").append(c.getMessage());
+            c = c.getCause();
+            depth++;
+        }
+        return sb.toString();
     }
 
     private interface ThrowingRunnable {
@@ -247,7 +261,8 @@ public class DownloaderPlugin extends Plugin {
                 emit("cancelled", d);
                 call.reject("cancelled");
             } catch (Exception e) {
-                String msg = e.getMessage() == null ? e.toString() : e.getMessage();
+                Log.e("DownloaderPlugin", "download failed", e);
+                String msg = fullMessage(e);
                 JSObject d = new JSObject();
                 d.put("id", id);
                 d.put("message", msg);

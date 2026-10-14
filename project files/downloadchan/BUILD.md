@@ -1,118 +1,87 @@
-# KanaPet — APK Build Instructions
+# Download-Chan — APK Build Instructions
 
-**Tech stack used:** single-page HTML/CSS/JS app (vanilla, no build step) wrapped with
-**Capacitor 6** for Android. Voice uses the Web Speech API (`SpeechRecognition`,
-`lang='ja-JP'`) with a self-rated-button fallback. All data is hard-coded in `www/js/data.js`
-(208 characters: 46+46 basic gojūon, dakuten, handakuten, yōon).
+**Tech stack:** vanilla HTML/CSS/JS UI (`www/`) wrapped with **Capacitor 6** for
+Android, plus a native Java bridge that bundles **yt-dlp** via
+`io.github.junkfood02.youtubedl-android:0.18.1` (extractor) and ffmpeg (merge/MP3).
 
 ## Project layout
 ```
-kanapet/
+downloadchan/
 ├── package.json            # Capacitor dependencies
-├── capacitor.config.json   # appId com.kanapet.app, webDir = www
-├── BUILD.md                # this file
-└── www/                    # the whole app (opens directly in any browser)
-    ├── index.html
-    ├── css/style.css
-    └── js/ data.js · pet.js · app.js
+├── capacitor.config.json   # appId com.downloadchan.app, webDir = www
+├── build-apk.sh            # versioned build script (use this)
+├── env.sh                  # JDK 17 + Android SDK env
+├── VERSION                 # next build version
+├── www/                    # the whole UI (opens in any browser)
+│   ├── index.html
+│   ├── css/style.css
+│   └── js/ native.js · app.js
+└── android/                # Capacitor Android project + native plugin
+    └── app/src/main/java/com/downloadchan/app/
+        ├── MainActivity.java        # share-intent receiver
+        └── DownloaderPlugin.java    # yt-dlp bridge (/Downloader plugin)
 ```
 
-## Prerequisites (one-time install)
-1. **Node.js 18+** and npm (https://nodejs.org).
-2. **Android Studio** (installs the Android SDK + JDK 17) — https://developer.android.com/studio.
-   Set `ANDROID_HOME` to your SDK folder (e.g. `~/Android/Sdk` on Linux,
-   `%LOCALAPPDATA%\Android\Sdk` on Windows).
-3. Accept SDK licenses: `yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses`.
+## Prerequisites (one-time)
+1. **Node.js 18+** and npm.
+2. **Android SDK** + **JDK 17** (Gradle 8.x fails on newer JDKs). `env.sh` sets
+   `JAVA_HOME=/usr/lib/jvm/java-17-openjdk` and `ANDROID_HOME=~/Android/Sdk`.
+3. SDK licenses accepted.
 
 ## Exact build commands
 ```bash
-cd kanapet
+cd downloadchan
 
-# 1. Install Capacitor
+# 1. Install Capacitor + deps
 npm install
 
-# 2. Add the Android platform (creates ./android/)
+# 2. (first time only) add the Android platform
 npx cap add android
 
 # 3. Copy www/ into the Android project + update plugins
-npx cap sync
+npx cap sync android
 
-# 4a. Build a debug APK (fast, for testing on a phone):
+# 4. debug APK
 cd android && ./gradlew assembleDebug
-#     output: android/app/build/outputs/apk/debug/app-debug.apk
-
-# 4b. Build a release APK (for distribution; needs a signing key):
-cd android && ./gradlew assembleRelease
-#     output: android/app/build/outputs/apk/release/app-release-unsigned.apk
+#    output: android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
 ## ✅ PREFERRED: versioned build script (use this every time)
 ```bash
-cd kanapet
-./build-apk.sh          # builds current VERSION, names APK KanaPet-v<version>.apk, bumps VERSION
+cd downloadchan
+source env.sh
+./build-apk.sh          # builds VERSION, names APK Download-Chan-v<ver>.apk, bumps VERSION
 ./build-apk.sh 2.0      # optional: force a specific version
 ```
-This is the standard way to build. It:
-1. reads `VERSION` (last version, e.g. `1.7`),
-2. writes that `versionName` + a matching `versionCode` into `android/app/build.gradle`,
-3. runs `npx cap sync android` + `./gradlew assembleDebug`,
-4. copies the result to **`project files/apk/KanaPet-v<version>.apk`**,
-5. bumps the last number in `VERSION` (1.7 → 1.8) for the next build.
+It: (1) reads `VERSION`, (2) writes `versionName`/`versionCode` into
+`android/app/build.gradle`, (3) runs `npx cap sync android` + `./gradlew assembleDebug`,
+(4) copies to **`project files/apk/Download-Chan-v<version>.apk`**, (5) bumps `VERSION`.
 
-So every change we make ships as a new, clearly-named APK and versions never collide.
-To open in Android Studio instead of the command line: `npx cap open android`,
-then **Build → Build Bundle(s) / APK(s) → Build APK(s)**.
-
-### Signing a release APK (required for Play Store / install on some devices)
+### Signing a release APK
 ```bash
-# create a key once
-keytool -genkey -v -keystore kanapet.keystore -alias kanapet -keyalg RSA -keysize 2048 -validity 10000
-# sign
-$ANDROID_HOME/build-tools/<version>/apksigner sign --ks kanapet.keystore \
-  --out kanapet-release.apk app/build/outputs/apk/release/app-release-unsigned.apk
+keytool -genkey -v -keystore downloadchan.keystore -alias downloadchan -keyalg RSA -keysize 2048 -validity 10000
+$ANDROID_HOME/build-tools/<version>/apksigner sign --ks downloadchan.keystore \
+  --out Download-Chan-release.apk app/build/outputs/apk/release/app-release-unsigned.apk
 ```
 
-## Microphone permission (RECORD_AUDIO)
-After `npx cap add android`, edit `android/app/src/main/AndroidManifest.xml` and add
-this line inside `<manifest>` (above `<application>`):
-```xml
-<uses-permission android:name="android.permission.RECORD_AUDIO" />
-```
-Capacitor shows a runtime permission prompt the first time the mic button is tapped.
-If the user denies it (or speech recognition is unavailable/offline), the app
-**automatically falls back to "Got it / Missed" self-rated buttons** — it is always usable.
+## CRITICAL: native-library extraction (why downloads initialize)
+youtubedl-android loads its bundled Python/FFmpeg `.so` files from
+`applicationInfo.nativeLibraryDir` at runtime. Under AGP 8 the default is
+`extractNativeLibs=false`, so those libs are **not** extracted and init throws
+`failed to initialize`. Both of these are required and already set:
+- `android/app/src/main/AndroidManifest.xml`: `android:extractNativeLibs="true"`
+- `android/app/build.gradle`: `packagingOptions { jniLibs { useLegacyPackaging = true } }`
 
-## 🎤 Voice recognition (implemented, offline-capable)
-Inside the APK the app uses the native plugin
-`@capacitor-community/speech-recognition` (v6). `www/js/app.js` `startListening()`:
-- uses the plugin's `partialResults` + `listeningState` events (NOT the old
-  `speechRecognitionResult`/`speechRecognitionError` events — those don't exist in v6),
-- auto-restarts listening if Android ends on silence (so the mic does not cut off
-  after ~2s), with a 15s hard cap,
-- asks for `preferOffline: true`,
-- on a correct answer the next card **auto-advances**.
+## Share target
+`AndroidManifest.xml` declares an `ACTION_SEND` (`text/plain`) intent-filter on
+`MainActivity`; shared links arrive via `DownloaderPlugin.setPendingShare()` and the
+`sharedUrl` event.
 
-### Offline Japanese setup (one-time, on the phone)
-Android's recognizer is offline only if the on-device language pack is installed:
-**Settings → Google → Settings for Google apps → Search, Assistant & Voice → Voice →
-Offline speech recognition → Japanese → Download.**
-`preferOffline` makes the app use that on-device model; without the pack it falls
-back to the network, and if neither works the Got-it/Missed buttons are always there.
+## Icons / splash
+Icon art is authored as SVG in `../../project details/icon/` and rasterized into all
+mipmap densities with `bash gen.sh` (needs `rsvg-convert` + ImageMagick). Splash
+screens are gradient + centered logo under `res/drawable*/splash.png`.
 
-### Offline native patch
-`patches/SpeechRecognition.java` adds `RecognizerIntent.EXTRA_PREFER_OFFLINE` to the
-plugin. `build-apk.sh` copies it into `node_modules/...` before every build, so the
-patch survives `npm install`. If you upgrade the plugin, re-check/rebuild the patch.
-
-## Back button
-With `@capacitor/app` installed, add to `app.js` `init()`:
-```js
-// TODO (native): CapacitorApp.addListener('backButton', ({canGoBack}) => { if(!canGoBack) App.exitApp(); });
-```
-Without it, the WebView default back behavior applies; the app never crashes on back
-because all state is in memory + persisted to `localStorage`.
-
-## Offline-first
-Everything (progress, errors, streak, XP, settings) persists in `localStorage`.
-No network calls except optional Google Fonts (system Noto CJK fallback on Android)
-and voice recognition (which gracefully degrades).
+## Notes
+- Only download content you own or have rights to save. Respect each site's terms.
+- Facebook/Instagram gated posts may require login cookies (not supported yet).

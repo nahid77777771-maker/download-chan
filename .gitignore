@@ -24,6 +24,9 @@ android/capacitor.settings.gradle
 # Large binary deliverables (kept out of git; rebuild with ./build-apk.sh)
 project files/apk/*.apk
 
+# Generated icon raster masters
+project details/icon/*.png
+
 # OS junk
 .DS_Store
 Thumbs.db
