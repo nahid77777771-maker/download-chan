@@ -53,6 +53,17 @@
       <button id="download" class="btn primary big">Download</button>
       <p class="hint" id="dl-hint">Tip: share a link from any app — it lands here and starts automatically.</p>
 
+      <div id="last-error" class="last-error hidden">
+        <div class="le-head">
+          <span>Last error</span>
+          <span>
+            <button id="le-copy" class="btn ghost small">Copy</button>
+            <button id="le-close" class="btn ghost small">✕</button>
+          </span>
+        </div>
+        <pre id="le-msg" class="mono small"></pre>
+      </div>
+
       <div id="active"></div>
       <div id="queue"></div>
     </section>

@@ -2,7 +2,7 @@
 (function () {
   "use strict";
 
-  var APP_VERSION = "1.0.0";
+  var APP_VERSION = "1.3.0";
   var SITES = [
     { name: "YouTube", url: "https://m.youtube.com", color: "#ff0033" },
     { name: "TikTok", url: "https://www.tiktok.com", color: "#25f4ee" },
@@ -117,9 +117,26 @@
     startDownload(url);
   });
 
+  /* ---------------- persistent error box ---------------- */
+  function showError(msg) {
+    var box = $("#last-error");
+    $("#le-msg").textContent = String(msg || "Download failed");
+    box.classList.remove("hidden");
+    $("#toast").classList.remove("show");
+  }
+  function clearError() { $("#last-error").classList.add("hidden"); }
+  $("#le-close").addEventListener("click", clearError);
+  $("#le-copy").addEventListener("click", function () {
+    var txt = $("#le-msg").textContent;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(txt).then(function () { toast("Error copied"); }).catch(function () {});
+    }
+  });
+
   /* ---------------- job engine ---------------- */
   function startDownload(url) {
     if (!window.DC.available) { toast("Native engine unavailable"); return; }
+    clearError();
     var job = {
       id: "j" + Date.now() + Math.random().toString(36).slice(2, 6),
       url: url,
@@ -155,7 +172,8 @@
         job.status = "error";
         job.error = (err && (err.message || err.errorMessage)) || "Download failed";
         finishActive();
-        toast("Failed: " + job.error);
+        toast("Download failed — see details");
+        showError(job.error);
       });
   }
 

@@ -254,3 +254,24 @@ select { -webkit-appearance: none; appearance: none;
   max-width: 88vw; text-align: center;
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ---------- utilities ---------- */
+.hidden { display: none !important; }
+
+/* ---------- persistent error box ---------- */
+.last-error {
+  margin-top: 12px;
+  background: #2a1620;
+  border: 1px solid #5c1f28;
+  border-radius: var(--radius);
+  padding: 10px 12px;
+}
+.last-error .le-head {
+  display: flex; align-items: center; justify-content: space-between;
+  color: var(--red); font-size: 12px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .6px; margin-bottom: 6px;
+}
+.last-error pre {
+  margin: 0; white-space: pre-wrap; word-break: break-word;
+  color: #ffd7dc; max-height: 220px; overflow: auto;
+}

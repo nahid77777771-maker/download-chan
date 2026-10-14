@@ -78,3 +78,46 @@ Every user prompt is recorded VERBATIM, followed by what was done.
 ### Notes
 - Verified in the built APK: `extractNativeLibs=0xffffffff` (true), libs legacy
   packaged, all icon densities present.
+
+---
+
+## Session 3 — Downloads failing mid-way + cuter icon (v1.3)
+
+### Prompt (verbatim)
+> issu the link work and add download but its some how cant start after some time
+> it says failed change the app icon cuter anc choby anime stle one
+
+### Diagnosis (reproduced with the bundled yt-dlp on the same network)
+- Bundled yt-dlp is recent (`2025.11.12`), so it's NOT an outdated-extractor issue.
+- Format extraction/metadata SUCCEEDS ("the link work, add download"), but the
+  **actual media download returns `HTTP Error 403: Forbidden`** right after
+  "Sleeping 5.00 seconds as required by the site..." → matches "after some time it
+  says failed". This is YouTube's anti-bot / PO-token enforcement.
+- Different player clients behave very differently: `default` + `android` give
+  downloadable URLs; `android_vr`, `tv`, `web_safari`, `mweb`, `ios` returned 403 or
+  "format not available".
+
+### Fixes
+- `DownloaderPlugin.java` hardened:
+  - format selector now prefers **H.264 mp4 video + m4a audio** (universally
+    playable, remuxes cleanly, avoids SABR/av01 pitfalls), with fallbacks.
+  - forces `--extractor-args youtube:player_client=default` (the client that exposes
+    a directly downloadable URL).
+  - `--retries 10`, `--fragment-retries 10`, `--socket-timeout 30`.
+  - **auto-retry** on failure with `--force-ipv4` + `youtube:player_client=android,default`.
+- UI now shows a **persistent, copyable "Last error"** box (was a 2.6s toast), so
+  the exact yt-dlp error is readable/reportable.
+
+### Icon (cuter chibi anime style)
+- Redesigned `project details/icon/art.svg`: bigger head (chibi), large sparkling
+  eyes with double highlights, **twin tails** with star ties, a pink **hair flower**,
+  blush, open smile with tongue, tiny body hugging the download sign.
+- Regenerated all mipmap densities (square + round + adaptive foreground).
+
+### Deliverables
+- `project files/apk/Download-Chan-v1.3.apk` (108 MB) ← LATEST
+- Removed v1.2 (superseded).
+
+### Notes
+- If a specific YouTube link still 403s, it's an IP-level bot flag; retries/VPN or
+  cookies are the only remaining levers. Report the full "Last error" text.

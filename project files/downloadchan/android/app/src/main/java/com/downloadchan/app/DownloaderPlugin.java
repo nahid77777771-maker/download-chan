@@ -171,6 +171,60 @@ public class DownloaderPlugin extends Plugin {
         });
     }
 
+    /* Build a format selector that prefers widely-compatible H.264 mp4 video
+       + m4a audio (plays everywhere, remuxes reliably), with graceful fallback
+       to whatever is best available. */
+    private static String videoFormat(String quality) {
+        String cap;
+        switch (quality) {
+            case "1080": cap = "[height<=1080]"; break;
+            case "720":  cap = "[height<=720]";  break;
+            case "480":  cap = "[height<=480]";  break;
+            case "360":  cap = "[height<=360]";  break;
+            default:     cap = "";               break;
+        }
+        if (cap.isEmpty()) {
+            return "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b";
+        }
+        return "bv*" + cap + "[ext=mp4]+ba[ext=m4a]/b" + cap + "[ext=mp4]/bv*" + cap + "+ba/b" + cap;
+    }
+
+    private static void addCommon(YoutubeDLRequest request, String outputTemplate) {
+        request.addOption("-o", outputTemplate);
+        request.addOption("--no-playlist");
+        request.addOption("--newline");
+        request.addOption("--no-mtime");
+        request.addOption("--retries", 10);
+        request.addOption("--fragment-retries", 10);
+        request.addOption("--socket-timeout", 30);
+        // Force the player client that reliably exposes a directly-downloadable
+        // stream URL (avoids the SABR/403 paths) and silences the JS-runtime warning.
+        request.addOption("--extractor-args", "youtube:player_client=default");
+    }
+
+    private YoutubeDLResponse execDownload(String url, String outputTemplate, String mode,
+                                           String quality, boolean retry, String id,
+                                           Function3<Float, Long, String, Unit> cb) throws Exception {
+        YoutubeDLRequest request = new YoutubeDLRequest(url);
+        addCommon(request, outputTemplate);
+        if (retry) {
+            // YouTube's anti-bot can 403 a flagged connection; retrying over
+            // IPv4 with the android client often gets a working URL.
+            request.addOption("--force-ipv4");
+            request.addOption("--extractor-args", "youtube:player_client=android,default");
+        }
+        if ("audio".equals(mode)) {
+            request.addOption("-f", "ba/b");
+            request.addOption("-x");
+            request.addOption("--audio-format", "mp3");
+            request.addOption("--audio-quality", "0");
+        } else {
+            request.addOption("-f", videoFormat(quality));
+            request.addOption("--merge-output-format", "mp4");
+        }
+        return YoutubeDL.getInstance().execute(request, id, cb);
+    }
+
     @PluginMethod
     public void download(final PluginCall call) {
         final String url = call.getString("url");
@@ -187,41 +241,6 @@ public class DownloaderPlugin extends Plugin {
         runAsync(call, () -> {
             ensureInit();
 
-            YoutubeDLRequest request = new YoutubeDLRequest(url);
-            request.addOption("-o", outputTemplate);
-            request.addOption("--no-playlist");
-            request.addOption("--newline");
-            request.addOption("--no-mtime");
-            request.addOption("--retries", 5);
-            request.addOption("--fragment-retries", 5);
-
-            if ("audio".equals(mode)) {
-                request.addOption("-f", "bestaudio/best");
-                request.addOption("-x");
-                request.addOption("--audio-format", "mp3");
-                request.addOption("--audio-quality", "0");
-            } else {
-                String fmt;
-                switch (quality) {
-                    case "1080":
-                        fmt = "bv*[height<=1080]+ba/b[height<=1080]";
-                        break;
-                    case "720":
-                        fmt = "bv*[height<=720]+ba/b[height<=720]";
-                        break;
-                    case "480":
-                        fmt = "bv*[height<=480]+ba/b[height<=480]";
-                        break;
-                    case "360":
-                        fmt = "bv*[height<=360]+ba/b[height<=360]";
-                        break;
-                    default:
-                        fmt = "bv*+ba/b";
-                }
-                request.addOption("-f", fmt);
-                request.addOption("--merge-output-format", "mp4");
-            }
-
             final long[] lastEmit = {0L};
             Function3<Float, Long, String, Unit> cb = (progress, eta, line) -> {
                 long now = System.currentTimeMillis();
@@ -237,39 +256,61 @@ public class DownloaderPlugin extends Plugin {
                 return Unit.INSTANCE;
             };
 
+            YoutubeDLResponse response = null;
+            Exception failure = null;
             try {
-                YoutubeDLResponse response = YoutubeDL.getInstance().execute(request, id, cb);
-                File result = null;
-                List<File> files = mediaFiles(dir);
-                if (!files.isEmpty()) result = files.get(0);
-
-                JSObject d = new JSObject();
-                d.put("id", id);
-                d.put("success", true);
-                d.put("exitCode", response.getExitCode());
-                if (result != null) {
-                    d.put("path", result.getAbsolutePath());
-                    d.put("name", result.getName());
-                    d.put("size", result.length());
-                }
-                emit("completed", d);
-                call.resolve(d);
+                response = execDownload(url, outputTemplate, mode, quality, false, id, cb);
             } catch (YoutubeDL.CanceledException ce) {
-                JSObject d = new JSObject();
-                d.put("id", id);
-                d.put("cancelled", true);
-                emit("cancelled", d);
+                emitCancelled(id);
                 call.reject("cancelled");
+                return;
             } catch (Exception e) {
-                Log.e("DownloaderPlugin", "download failed", e);
-                String msg = fullMessage(e);
+                Log.w("DownloaderPlugin", "download attempt 1 failed: " + fullMessage(e));
+                try {
+                    response = execDownload(url, outputTemplate, mode, quality, true, id, cb);
+                } catch (YoutubeDL.CanceledException ce) {
+                    emitCancelled(id);
+                    call.reject("cancelled");
+                    return;
+                } catch (Exception e2) {
+                    failure = e2;
+                }
+            }
+
+            if (failure != null) {
+                Log.e("DownloaderPlugin", "download failed", failure);
+                String msg = fullMessage(failure);
                 JSObject d = new JSObject();
                 d.put("id", id);
                 d.put("message", msg);
                 emit("error", d);
                 call.reject(msg);
+                return;
             }
+
+            File result = null;
+            List<File> files = mediaFiles(dir);
+            if (!files.isEmpty()) result = files.get(0);
+
+            JSObject d = new JSObject();
+            d.put("id", id);
+            d.put("success", true);
+            d.put("exitCode", response.getExitCode());
+            if (result != null) {
+                d.put("path", result.getAbsolutePath());
+                d.put("name", result.getName());
+                d.put("size", result.length());
+            }
+            emit("completed", d);
+            call.resolve(d);
         });
+    }
+
+    private void emitCancelled(final String id) {
+        JSObject d = new JSObject();
+        d.put("id", id);
+        d.put("cancelled", true);
+        emit("cancelled", d);
     }
 
     @PluginMethod

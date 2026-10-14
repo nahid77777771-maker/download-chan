@@ -1,8 +1,8 @@
 # Download-Chan — Session Memory (resume playbook)
 > Read this FIRST in any new session. Update at the END of every session.
 
-**Last dump:** Session 2 · v1.2
-**Next build will be:** v1.3
+**Last dump:** Session 3 · v1.3
+**Next build will be:** v1.4
 
 ---
 
@@ -73,7 +73,8 @@ source env.sh        # JDK 17 + ANDROID_HOME=~/Android/Sdk
 - `build.gradle`: `ndk { abiFilters 'arm64-v8a','armeabi-v7a' }` and
   `packagingOptions { jniLibs { useLegacyPackaging = true } }` (both required).
 - `res/values/colors.xml` added (was missing in the KanaPet template).
-- **Icons:** authored as SVG then rasterized with `rsvg-convert` + ImageMagick into
+- **Icons:** cuter chibi green-haired girl (twin tails, hair flower, big sparkly
+  eyes) authored as SVG then rasterized with `rsvg-convert` + ImageMagick into
   every mipmap density (square + round + adaptive foreground). Adaptive background
   is a gradient VectorDrawable. Source art is versioned at
   `project details/icon/{art.svg,bg.svg,gen.sh}` — regenerate with
@@ -85,16 +86,26 @@ source env.sh        # JDK 17 + ANDROID_HOME=~/Android/Sdk
 |---|---|---|
 | v1.0 | Initial app (all 4 ABIs) — broken init | 214 MB |
 | v1.1 | + ABI filter — broken init | 109 MB |
-| v1.2 | **Fix downloads (extractNativeLibs), new green-hair icon + splash** ← LATEST | 108 MB |
+| v1.2 | Fix init (extractNativeLibs), green-hair icon + splash | 108 MB |
+| v1.3 | **YouTube 403 hardening + retry, mp4/m4a prefer, persistent error box, cuter chibi icon** ← LATEST | 108 MB |
 
 Debug-signed (debug keystore). Install via `adb install -r <apk>`.
-(v1.0/v1.1 removed — they failed to initialize.)
+(v1.0/v1.1/v1.2 removed — superseded.)
 
 ## 6. Gotchas
 - **"failed to initialize" = native libs not extracted.** youtubedl-android reads
   its `.so` from `nativeLibraryDir`; AGP 8 defaults `extractNativeLibs=false`.
   Keep BOTH `android:extractNativeLibs="true"` in the manifest AND
   `packagingOptions { jniLibs { useLegacyPackaging = true } }` in build.gradle.
+- **YouTube "fails after a while" = media-download 403 (anti-bot/PO token), NOT an
+  outdated extractor.** Bundled yt-dlp is current. Extraction succeeds, then the
+  stream URL is rejected. Mitigations in-app: `player_client=default`, prefer
+  mp4/m4a, retry with `--force-ipv4` + `android` client. Hard IP flags need
+  cookies/VPN. Reproduce locally with the bundled binary
+  (`python3 <unzipped res/raw/ytdlp> ...`) — it runs on the host too.
+- Different YouTube `player_client` values are NOT equivalent: `default`/`android`
+  give downloadable URLs; `android_vr`/`tv`/`web_safari`/`mweb`/`ios` 403 or have no
+  formats. Don't set `player_client` blind.
 - `git clone github.com` / `git ls-remote` HANG on this machine (use raw /
   codeload). `git push` may be slow — allow a long timeout.
 - GitHub token in keyring was **invalid** (needs `gh auth login` before push).
@@ -104,7 +115,9 @@ Debug-signed (debug keystore). Install via `adb install -r <apk>`.
   because it lives in the app module, not as an npm package.
 
 ## 7. Typical next moves
-- Confirm v1.2 downloads work on the device (the extractNativeLibs fix).
+- Confirm v1.3 downloads on the device; if a link still fails, read the on-screen
+  "Last error" box (copyable) and share the exact text.
+- Consider cookies support / an in-app WebView login to beat IP-level 403s.
 - Smaller release APK (keystore + `assembleRelease`, `minifyEnabled`), or arm64-only.
 - Download thumbnail/title preview (`getInfo` already implemented, UI not wired).
 - Multiple concurrent downloads / background service + notification.
